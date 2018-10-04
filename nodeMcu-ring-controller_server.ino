@@ -2,7 +2,6 @@
 #include <ESP8266WiFi.h>
 #include <WiFiClient.h>
 #include <ESP8266WebServer.h>
-#include <ESP8266mDNS.h>
 
 const char *ssid = "";
 const char *password = "";
@@ -12,7 +11,7 @@ ESP8266WebServer server(80);
 #define NUM_LEDS 8
 int brightness = 150;
 String stateLed[NUM_LEDS] = {};
-Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_LEDS, NeoPIN, NEO_RGB + NEO_KHZ800);
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_LEDS, NeoPIN, NEO_RGB);
 
 const int led = 13;
 
@@ -26,27 +25,19 @@ void setup(void) {
   delay(50);
   
   WiFi.begin(ssid, password);
-
-  // Wait for connection
   while (WiFi.status() != WL_CONNECTED) {
     delay(100);
     Serial.print(".");
   }
 
-  Serial.println("");
-  Serial.print("Connected");
+  Serial.print("\nConnected");
   Serial.println(WiFi.localIP());
 
-  if (MDNS.begin("alexring")) {
-    Serial.println("MDNS responder started");
-  }
-
-  // what to do with requests
-  server.on("/", handleRoot);
   server.on("/bright", brightNeo);
   server.on("/snake", snakeNeo);
-  server.on("/switch", switchNeo);
+  server.on("/light", lightNeo);
   server.on("/blink", blinkNeo);
+  server.on("/black", blackNeo);
   server.onNotFound(handleNotFound);
   server.begin();
  
@@ -54,32 +45,24 @@ void setup(void) {
   Serial.println("HTTP server started");
 
   snakeNeo();
-  snakeNeo();
 }
 
 void loop(void) {
   server.handleClient();
 }
 
-
-void handleRoot() {
-  Serial.println("Client connected");
-  responseReq();
-}
-
 void handleNotFound(void) {
   String message = "File Not Found\n\n";
+
   message += "URI: ";
   message += server.uri();
   message += "\nMethod: ";
-  message += ( server.method() == HTTP_GET ) ? "GET" : "POST";
+  message += (server.method() == HTTP_GET) ? "GET" : "POST";
   message += "\nArguments: ";
   message += server.args();
   message += "\n";
-
-  for ( uint8_t i = 0; i < server.args(); i++ ) {
+  for ( uint8_t i = 0; i < server.args(); i++ )
     message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
-  }
 
   server.send(404, "text/plain", message);
 }
@@ -95,18 +78,19 @@ void brightNeo(void) {
 
 void snakeNeo() {
   String color = server.arg("color");
-  int tim = server.arg("time").toInt();
+  int inter = server.arg("interval").toInt();
   int i = 0;
   unsigned long currentMillis = 0;
   unsigned long previousMillis = 0;
 
   color = (!color || color == "") ? "#ffffff" : color;
-  tim = (!tim || tim < 0) ? 100 : tim;
+  inter = (!inter || inter < 0) ? 100 : inter;
   responseReq();
   
+  blackNeo();
   while (i <= NUM_LEDS) {
     currentMillis = millis();
-    if (currentMillis - previousMillis >= tim) {
+    if (currentMillis - previousMillis >= inter) {
       if (i > 0) {
         strip.setPixelColor(i - 1, strip.Color(0, 0, 0));
         strip.show();
@@ -119,34 +103,24 @@ void snakeNeo() {
       i++;
     }
   }
-
-  switchNeo();
 }
 
-void switchNeo(void) {
+void lightNeo(void) {
   String color = server.arg("color");
   int id = server.arg("id").toInt();
   String savedColor = "";
 
-  Serial.println(server.arg("id"));
-
   responseReq();
-
-  if (id < NUM_LEDS && id > -1) {
+  if (server.arg("id") != "" && id < NUM_LEDS && id > -1)
     stateLed[id] = color;
-  }
-
   for (int i = 0; i < NUM_LEDS; i++) {
       if (stateLed[i])
-      {
         savedColor = stateLed[i];
-      }
-      else {
+      else
         savedColor = "#000000";
-      }
       strip.setPixelColor(i, strip.Color(getColor(savedColor)[1], getColor(savedColor)[0], getColor(savedColor)[2]));
-      strip.show();
     }
+    strip.show();
 }
 
 void blinkNeo(void) {
@@ -175,14 +149,19 @@ void blinkNeo(void) {
       }
       previousMillis = currentMillis;
       tmpBright = tmpBright * ex;
-
       strip.setBrightness(tmpBright);
       strip.show();
-
       i++;
     }
   }
   strip.setBrightness(brightness);
+  strip.show();
+}
+
+void blackNeo(void) {
+  responseReq();
+  for (int i = 0; i < NUM_LEDS; i++)
+    strip.setPixelColor(i, strip.Color(0, 0, 0));
   strip.show();
 }
 
@@ -210,10 +189,8 @@ void responseReq(void) {
   </body>\
   </html>\n"
   );
-
   server.send(200, "text/html", temp);
 }
-
 
 
 
